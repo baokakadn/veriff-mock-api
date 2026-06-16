@@ -221,18 +221,25 @@ app.post('/veriff/webhook', (req, res) => {
   const verificationId = verification.id;
   const code = verification.code;
   const status = verification.status;
+  const reason = verification.reason || null;
+  const reasonCode = verification.reasonCode || null;
+  const decisionTime = verification.decisionTime || null;
+  const acceptanceTime = verification.acceptanceTime || null;
   const person = verification.person || payload.technicalData?.person;
   const document = verification.document || payload.technicalData?.document;
+  const additionalVerifiedData = verification.additionalVerifiedData || null;
+  const riskLabels = verification.riskLabels || null;
+  const vendorData = verification.vendorData || null;
 
   let targetSession = veriffSessions[verificationId];
   if (!targetSession) {
     targetSession = Object.values(veriffSessions).find(
-      s => s.preIDVSessionToken === verification.vendorData
+      s => s.preIDVSessionToken === vendorData
     );
   }
 
   if (!targetSession) {
-    log('WEBHOOK', `Received webhook for unknown session: ${verificationId}`, { code, status });
+    log('WEBHOOK', `Received webhook for unknown session: ${verificationId}`, { code, status, reason, reasonCode });
     return res.json({ status: 'ok', matched: false });
   }
 
@@ -242,15 +249,25 @@ app.post('/veriff/webhook', (req, res) => {
     : status || 'unknown';
 
   targetSession.status = decisionStatus;
-  targetSession.decision = { code, status: decisionStatus };
+  targetSession.decision = {
+    code, status: decisionStatus,
+    reason, reasonCode,
+    decisionTime, acceptanceTime,
+    riskLabels
+  };
 
   const biometricData = extractBiometricFromVeriff(person, document);
   targetSession.biometricData = code === 9001 ? biometricData : null;
+  targetSession.additionalVerifiedData = additionalVerifiedData;
+  targetSession.rawWebhookPayload = payload;
 
   const lockCode = lockCodes[targetSession.lockCodeId];
   if (lockCode) {
     lockCode.veriffDecision = {
       status: decisionStatus, code,
+      reason, reasonCode,
+      decisionTime, acceptanceTime,
+      riskLabels,
       decidedAt: new Date().toISOString()
     };
     if (code === 9001 && biometricData) {
@@ -260,6 +277,7 @@ app.post('/veriff/webhook', (req, res) => {
 
   log('WEBHOOK', `Decision ${code} (${decisionStatus}) for ${targetSession.lockCodeId}`, {
     verificationId: targetSession.verificationId,
+    reason, reasonCode, riskLabels,
     hasBiometricData: !!biometricData,
     personName: person ? `${person.firstName} ${person.lastName}` : 'N/A'
   });
@@ -318,6 +336,11 @@ app.get('/lock-codes/:id/veriff-status', (req, res) => {
     status: 'decided',
     decision: lockCode.veriffDecision.status,
     code: lockCode.veriffDecision.code,
+    reason: lockCode.veriffDecision.reason,
+    reasonCode: lockCode.veriffDecision.reasonCode,
+    riskLabels: lockCode.veriffDecision.riskLabels,
+    decisionTime: lockCode.veriffDecision.decisionTime,
+    acceptanceTime: lockCode.veriffDecision.acceptanceTime,
     decidedAt: lockCode.veriffDecision.decidedAt,
     verificationId: lockCode.currentVerificationId
   });
