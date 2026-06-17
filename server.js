@@ -937,20 +937,14 @@ async function refreshWebhooks() {
 
     // Risk labels
     if (d.riskLabels && d.riskLabels.length) {
-      html += '<div style="font-size: 11px; color: #14e5c5; font-weight: 600; margin-bottom: 6px; text-transform: uppercase;">Risk Labels</div>';
-      html += '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">';
+      html += '<div style="font-size: 11px; color: #14e5c5; font-weight: 600; margin-bottom: 6px; text-transform: uppercase;">Risk Labels (' + d.riskLabels.length + ')</div>';
+      html += '<div style="font-size: 12px; margin-bottom: 12px;">';
       d.riskLabels.forEach(function(rl) {
-        const catColor = rl.category === 'crosslinks' ? '#7c3aed'
-          : rl.category === 'document' ? '#1d4ed8'
-          : rl.category === 'person' ? '#00ba7c'
-          : rl.category === 'device' ? '#f59e0b'
-          : rl.category === 'client_data_mismatch' ? '#ec4899'
-          : '#536471';
-        html += '<div style="background: ' + catColor + '22; border: 1px solid ' + catColor + '66; border-radius: 6px; padding: 4px 8px; font-size: 11px;">';
-        html += '<div style="font-weight: 600; color: ' + catColor + ';">' + (rl.category || 'unknown') + '</div>';
-        html += '<div style="color: #e7e9ea;">' + (rl.label || '').replace(/_/g, ' ') + '</div>';
+        html += '<div style="padding: 3px 0; border-bottom: 1px solid #1a1f26;">';
+        html += '<span style="color: #536471;">' + (rl.category || 'unknown') + '</span> ';
+        html += '<span style="color: #e7e9ea;">' + (rl.label || '').replace(/_/g, ' ') + '</span>';
         if (rl.sessionIds && rl.sessionIds.length) {
-          html += '<div style="color: #536471; font-size: 10px; margin-top: 2px;">' + rl.sessionIds.length + ' linked session(s)</div>';
+          html += ' <span style="color: #536471; font-size: 10px;">(' + rl.sessionIds.length + ' linked)</span>';
         }
         html += '</div>';
       });
