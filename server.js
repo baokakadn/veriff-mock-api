@@ -520,6 +520,32 @@ app.get('/lock-codes/:id/pre-idv', (req, res) => {
 });
 
 // ============================================================
+// ENDPOINT 6: Get Latest Webhook Data
+// GET /admin/webhooks
+// Returns all sessions that have received a webhook decision,
+// with full decision details, biometric data, and raw payload.
+// ============================================================
+
+app.get('/admin/webhooks', (req, res) => {
+  const webhooks = Object.values(veriffSessions)
+    .filter(s => s.decision)
+    .sort((a, b) => {
+      const tA = a.decision.decisionTime || '';
+      const tB = b.decision.decisionTime || '';
+      return tB.localeCompare(tA);
+    })
+    .map(s => ({
+      lockCodeId: s.lockCodeId,
+      verificationId: s.verificationId,
+      decision: s.decision,
+      biometricData: s.biometricData,
+      additionalVerifiedData: s.additionalVerifiedData,
+      rawWebhookPayload: s.rawWebhookPayload
+    }));
+  res.json(webhooks);
+});
+
+// ============================================================
 // STATUS
 // GET /status
 // ============================================================
@@ -737,6 +763,15 @@ app.get('/', (req, res) => {
       <div id="admin-result" class="result" style="display:none;"></div>
     </div>
 
+    <!-- LIVE WEBHOOK DATA -->
+    <div class="card full-width">
+      <h2>Webhook Data (Live)</h2>
+      <p style="font-size: 12px; color: #8b98a5; margin-bottom: 12px;">Auto-refreshes every 3 seconds. Shows biometric data and decision details from Veriff webhooks.</p>
+      <div id="webhook-data" style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="color: #536471; font-size: 13px;">No webhook data yet. Create a session and complete Veriff verification.</div>
+      </div>
+    </div>
+
     <!-- ACTIVITY LOG -->
     <div class="card full-width">
       <h2>Activity Log</h2>
@@ -852,8 +887,85 @@ async function refreshLog() {
   ).join('');
 }
 
+async function refreshWebhooks() {
+  const data = await api('GET', '/admin/webhooks');
+  const el = document.getElementById('webhook-data');
+  if (!data.length) {
+    el.innerHTML = '<div style="color: #536471; font-size: 13px;">No webhook data yet. Create a session and complete Veriff verification.</div>';
+    return;
+  }
+  el.innerHTML = data.map(w => {
+    const d = w.decision || {};
+    const isApproved = d.code === 9001;
+    const isDeclined = d.code === 9102;
+    const borderColor = isApproved ? '#00ba7c' : isDeclined ? '#f4212e' : '#f59e0b';
+    const statusLabel = isApproved ? 'APPROVED' : isDeclined ? 'DECLINED' : (d.status || 'UNKNOWN').toUpperCase();
+
+    let html = '<div style="background: #0f1419; border: 1px solid ' + borderColor + '; border-radius: 8px; padding: 16px;">';
+    html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
+    html += '<span style="font-size: 14px; font-weight: 600;">' + (w.lockCodeId || 'N/A') + '</span>';
+    html += '<span style="background: ' + borderColor + '; color: ' + (isApproved ? '#0f1419' : 'white') + '; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">' + statusLabel + ' (' + d.code + ')</span>';
+    html += '</div>';
+
+    // Decision details
+    html += '<div style="font-size: 11px; color: #14e5c5; font-weight: 600; margin-bottom: 6px; text-transform: uppercase;">Decision</div>';
+    html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; margin-bottom: 12px;">';
+    html += field('Reason', d.reason);
+    html += field('Reason Code', d.reasonCode);
+    html += field('Risk Labels', d.riskLabels ? JSON.stringify(d.riskLabels) : null);
+    html += field('Decision Time', d.decisionTime);
+    html += field('Acceptance Time', d.acceptanceTime);
+    html += '</div>';
+
+    // Biometric data
+    if (w.biometricData) {
+      const b = w.biometricData;
+      html += '<div style="font-size: 11px; color: #14e5c5; font-weight: 600; margin-bottom: 6px; text-transform: uppercase;">Biometric Data</div>';
+      html += '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 16px; font-size: 12px; margin-bottom: 12px;">';
+      html += field('First Name', b.firstName);
+      html += field('Middle Name', b.middleName);
+      html += field('Last Name', b.lastName);
+      html += field('Date of Birth', b.dateOfBirth);
+      html += field('Gender', b.gender);
+      html += field('Address', b.address1);
+      html += field('City', b.city);
+      html += field('State', b.state);
+      html += field('Postal Code', b.postalCode);
+      html += field('ID Type', b.idType);
+      html += field('ID Number', b.idNumber);
+      html += field('Expiration', b.expirationDate);
+      html += field('Issuing Authority', b.issuingAuthority);
+      html += '</div>';
+    } else {
+      html += '<div style="font-size: 12px; color: #536471; margin-bottom: 12px;">No biometric data (decision was not approved)</div>';
+    }
+
+    // Raw payload toggle
+    if (w.rawWebhookPayload) {
+      const rawId = 'raw-' + (w.verificationId || Math.random()).replace(/[^a-z0-9]/gi, '');
+      html += '<button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="toggleRaw(\\'' + rawId + '\\')">Toggle Raw Payload</button>';
+      html += '<pre id="' + rawId + '" style="display:none; margin-top: 8px; font-size: 11px; color: #8b98a5; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">' + JSON.stringify(w.rawWebhookPayload, null, 2) + '</pre>';
+    }
+
+    html += '</div>';
+    return html;
+  }).join('');
+}
+
+function field(label, value) {
+  const v = value != null ? value : '<span style="color:#536471">—</span>';
+  return '<div><span style="color: #8b98a5;">' + label + ':</span> ' + v + '</div>';
+}
+
+function toggleRaw(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 setInterval(refreshLog, 3000);
+setInterval(refreshWebhooks, 3000);
 refreshLog();
+refreshWebhooks();
 </script>
 </body>
 </html>`);
