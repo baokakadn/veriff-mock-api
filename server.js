@@ -887,6 +887,8 @@ async function refreshLog() {
   ).join('');
 }
 
+const expandedRawPanels = new Set();
+
 async function refreshWebhooks() {
   const data = await api('GET', '/admin/webhooks');
   const el = document.getElementById('webhook-data');
@@ -900,6 +902,7 @@ async function refreshWebhooks() {
     const isDeclined = d.code === 9102;
     const borderColor = isApproved ? '#00ba7c' : isDeclined ? '#f4212e' : '#f59e0b';
     const statusLabel = isApproved ? 'APPROVED' : isDeclined ? 'DECLINED' : (d.status || 'UNKNOWN').toUpperCase();
+    const rawId = 'raw-' + (w.verificationId || '').replace(/[^a-z0-9]/gi, '');
 
     let html = '<div style="background: #0f1419; border: 1px solid ' + borderColor + '; border-radius: 8px; padding: 16px;">';
     html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
@@ -912,10 +915,31 @@ async function refreshWebhooks() {
     html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; margin-bottom: 12px;">';
     html += field('Reason', d.reason);
     html += field('Reason Code', d.reasonCode);
-    html += field('Risk Labels', d.riskLabels ? JSON.stringify(d.riskLabels) : null);
     html += field('Decision Time', d.decisionTime);
     html += field('Acceptance Time', d.acceptanceTime);
     html += '</div>';
+
+    // Risk labels
+    if (d.riskLabels && d.riskLabels.length) {
+      html += '<div style="font-size: 11px; color: #14e5c5; font-weight: 600; margin-bottom: 6px; text-transform: uppercase;">Risk Labels</div>';
+      html += '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">';
+      d.riskLabels.forEach(function(rl) {
+        const catColor = rl.category === 'crosslinks' ? '#7c3aed'
+          : rl.category === 'document' ? '#1d4ed8'
+          : rl.category === 'person' ? '#00ba7c'
+          : rl.category === 'device' ? '#f59e0b'
+          : rl.category === 'client_data_mismatch' ? '#ec4899'
+          : '#536471';
+        html += '<div style="background: ' + catColor + '22; border: 1px solid ' + catColor + '66; border-radius: 6px; padding: 4px 8px; font-size: 11px;">';
+        html += '<div style="font-weight: 600; color: ' + catColor + ';">' + (rl.category || 'unknown') + '</div>';
+        html += '<div style="color: #e7e9ea;">' + (rl.label || '').replace(/_/g, ' ') + '</div>';
+        if (rl.sessionIds && rl.sessionIds.length) {
+          html += '<div style="color: #536471; font-size: 10px; margin-top: 2px;">' + rl.sessionIds.length + ' linked session(s)</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    }
 
     // Biometric data
     if (w.biometricData) {
@@ -942,9 +966,9 @@ async function refreshWebhooks() {
 
     // Raw payload toggle
     if (w.rawWebhookPayload) {
-      const rawId = 'raw-' + (w.verificationId || Math.random()).replace(/[^a-z0-9]/gi, '');
-      html += '<button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="toggleRaw(\\'' + rawId + '\\')">Toggle Raw Payload</button>';
-      html += '<pre id="' + rawId + '" style="display:none; margin-top: 8px; font-size: 11px; color: #8b98a5; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">' + JSON.stringify(w.rawWebhookPayload, null, 2) + '</pre>';
+      const isOpen = expandedRawPanels.has(rawId);
+      html += '<button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="toggleRaw(\\'' + rawId + '\\')">' + (isOpen ? 'Hide' : 'Show') + ' Raw Payload</button>';
+      html += '<pre id="' + rawId + '" style="display:' + (isOpen ? 'block' : 'none') + '; margin-top: 8px; font-size: 11px; color: #8b98a5; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">' + JSON.stringify(w.rawWebhookPayload, null, 2) + '</pre>';
     }
 
     html += '</div>';
@@ -959,7 +983,13 @@ function field(label, value) {
 
 function toggleRaw(id) {
   const el = document.getElementById(id);
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (expandedRawPanels.has(id)) {
+    expandedRawPanels.delete(id);
+    el.style.display = 'none';
+  } else {
+    expandedRawPanels.add(id);
+    el.style.display = 'block';
+  }
 }
 
 setInterval(refreshLog, 3000);
