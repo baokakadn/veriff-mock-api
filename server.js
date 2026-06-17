@@ -766,7 +766,7 @@ app.get('/', (req, res) => {
     <!-- LIVE WEBHOOK DATA -->
     <div class="card full-width">
       <h2>Webhook Data (Live)</h2>
-      <p style="font-size: 12px; color: #8b98a5; margin-bottom: 12px;">Auto-refreshes every 3 seconds. Shows biometric data and decision details from Veriff webhooks.</p>
+      <p id="webhook-status" style="font-size: 12px; color: #8b98a5; margin-bottom: 12px;">Auto-refreshes every 3 seconds. Shows biometric data and decision details from Veriff webhooks.</p>
       <div id="webhook-data" style="display: flex; flex-direction: column; gap: 12px;">
         <div style="color: #536471; font-size: 13px;">No webhook data yet. Create a session and complete Veriff verification.</div>
       </div>
@@ -802,6 +802,8 @@ async function createSession() {
   });
   show('session-result', data, !!data.sessionUrl);
   refreshLog();
+  startWebhookRefresh();
+  refreshWebhooks();
 }
 
 async function pollStatus() {
@@ -888,14 +890,28 @@ async function refreshLog() {
 }
 
 const expandedRawPanels = new Set();
+let webhookIntervalId = null;
 
 async function refreshWebhooks() {
   const data = await api('GET', '/admin/webhooks');
   const el = document.getElementById('webhook-data');
+  const statusEl = document.getElementById('webhook-status');
   if (!data.length) {
     el.innerHTML = '<div style="color: #536471; font-size: 13px;">No webhook data yet. Create a session and complete Veriff verification.</div>';
+    statusEl.textContent = 'Auto-refreshes every 3 seconds. Shows biometric data and decision details from Veriff webhooks.';
     return;
   }
+
+  const allDecided = data.every(w => w.decision && w.decision.code);
+  if (allDecided && webhookIntervalId) {
+    clearInterval(webhookIntervalId);
+    webhookIntervalId = null;
+    statusEl.innerHTML = 'All sessions have final decisions. <span style="color: #00ba7c;">Refresh paused.</span> <button class="btn-secondary" style="font-size: 11px; padding: 2px 8px;" onclick="startWebhookRefresh()">Resume</button>';
+  } else if (!allDecided && !webhookIntervalId) {
+    startWebhookRefresh();
+    statusEl.textContent = 'Auto-refreshing every 3 seconds...';
+  }
+
   el.innerHTML = data.map(w => {
     const d = w.decision || {};
     const isApproved = d.code === 9001;
@@ -992,9 +1008,16 @@ function toggleRaw(id) {
   }
 }
 
+function startWebhookRefresh() {
+  if (webhookIntervalId) return;
+  webhookIntervalId = setInterval(refreshWebhooks, 3000);
+  const statusEl = document.getElementById('webhook-status');
+  if (statusEl) statusEl.textContent = 'Auto-refreshing every 3 seconds...';
+}
+
 setInterval(refreshLog, 3000);
-setInterval(refreshWebhooks, 3000);
 refreshLog();
+startWebhookRefresh();
 refreshWebhooks();
 </script>
 </body>
